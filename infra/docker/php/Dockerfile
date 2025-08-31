@@ -1,31 +1,33 @@
-FROM php:8.0-fpm-buster
+FROM php:8.1-fpm-bookworm
 LABEL maintainer="ucan-lab <yes@u-can.pro>"
 SHELL ["/bin/bash", "-oeux", "pipefail", "-c"]
 
-# timezone environment
+# timezone / locale / composer env
 ENV TZ=UTC \
-  # locale
   LANG=en_US.UTF-8 \
-  LANGUAGE=en_US:en \
   LC_ALL=en_US.UTF-8 \
-  # composer environment
   COMPOSER_ALLOW_SUPERUSER=1 \
   COMPOSER_HOME=/composer
 
-COPY --from=composer:2.0 /usr/bin/composer /usr/bin/composer
+# Composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-RUN apt-get update && \
-  apt-get -y install git libicu-dev libonig-dev libzip-dev unzip locales && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/* && \
-  locale-gen en_US.UTF-8 && \
-  localedef -f UTF-8 -i en_US en_US.UTF-8 && \
-  mkdir /var/run/php-fpm && \
-  docker-php-ext-install intl pdo_mysql zip bcmath && \
-  composer config -g process-timeout 3600 && \
-  composer config -g repos.packagist composer https://packagist.org
+# packages + locales + php extensions
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends \
+    git unzip libicu-dev libzip-dev locales; \
+  sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen; \
+  locale-gen; update-locale LANG="$LANG" LC_ALL="$LC_ALL"; \
+  mkdir -p /var/run/php-fpm; \
+  docker-php-ext-install intl pdo_mysql zip bcmath; \
+  composer config -g process-timeout 3600; \
+  composer config -g repos.packagist composer https://packagist.org; \
+  rm -rf /var/lib/apt/lists/*
 
 COPY ./infra/docker/php/php-fpm.d/zzz-www.conf /usr/local/etc/php-fpm.d/zzz-www.conf
 COPY ./infra/docker/php/php.ini /usr/local/etc/php/php.ini
+
+COPY --chown=www-data:www-data ./backend /work/backend
 
 WORKDIR /work/backend
